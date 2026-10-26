@@ -2,7 +2,7 @@ package `fun`.eternalblue.service
 
 import `fun`.eternalblue.data.ApiResponse
 import `fun`.eternalblue.data.ApiUser
-import `fun`.eternalblue.data.AppConfig
+import `fun`.eternalblue.data.AccountOptions
 import `fun`.eternalblue.data.CheckinCurrent
 import `fun`.eternalblue.data.ClazzCourse
 import `fun`.eternalblue.data.SubmitResult
@@ -20,9 +20,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class AutoSignService(
-    private val options: AppConfig,
-    private val account: String = options.account.orEmpty(),
-    private val password: String = options.password.orEmpty(),
+    private val options: AccountOptions,
+    private val account: String = options.account,
+    private val password: String = options.password,
     api: ApiClient? = null,
     private val coreApiBaseUrl: String = CORE_API,
     private val legacyLoginApiUrl: String = MobileProtocol.LEGACY_LOGIN_API,
@@ -31,22 +31,14 @@ class AutoSignService(
 ) {
     private val api: ApiClient = api ?: ApiClient(tag = options.label)
 
-    private val accountLabel: String =
-        options.label?.takeIf { it.isNotBlank() } ?: maskAccount(account)
-
-    private val debugTag: String? = options.label?.takeIf { it.isNotBlank() }
+    private val accountLabel: String = options.label
 
     private fun say(message: String = "") {
-        if (options.isMultiAccount || options.label != null) {
-            println("[$accountLabel] $message")
-        } else {
-            println(message)
-        }
+        println("[$accountLabel] $message")
     }
 
     /** Log lines from concurrent accounts must stay attributable. */
-    private fun logTag(message: String): String =
-        debugTag?.let { "[$it] $message" } ?: message
+    private fun logTag(message: String): String = "[$accountLabel] $message"
 
     private fun logInfo(message: String) = Log.info(logTag(message))
 
@@ -54,9 +46,9 @@ class AutoSignService(
 
     private fun logDebug(message: String) = Log.debug(logTag(message))
 
-    private fun debugLine(message: String) = Debug.line(debugTag?.let { "[$it] $message" } ?: message)
+    private fun debugLine(message: String) = Debug.line(logTag(message))
 
-    private fun debugName(name: String): String = debugTag?.let { "$it-$name" } ?: name
+    private fun debugName(name: String): String = "$accountLabel-$name"
 
     internal sealed interface Session {
         val displayName: String

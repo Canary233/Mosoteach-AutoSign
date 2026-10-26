@@ -43,7 +43,7 @@ data class CourseLocation(
 ) {
     init {
         require(listOfNotNull(courseId, courseName).size == 1) {
-            "每个 [[locations]] 只能填写 course_id 或 course 中的一项"
+            "每个 [[accounts.locations]] 只能填写 course_id 或 course 中的一项"
         }
     }
 
@@ -54,40 +54,48 @@ data class CourseLocation(
         }
 }
 
+/** One entry of the only supported config form: [[accounts]]. */
 data class AccountConfig(
     val username: String,
-    val password: String? = null,
+    val password: String,
     val name: String? = null,
     val location: SignLocation? = null,
     val locations: List<CourseLocation> = emptyList()
 ) {
     init {
         require(username.isNotBlank()) { "accounts 的 username 不能为空" }
+        require(password.isNotEmpty()) { "accounts 的 password 不能为空" }
     }
 }
 
-data class AppConfig(
-    val account: String? = null,
-    val password: String? = null,
-    val label: String? = null,
-    val intervalSeconds: Long = DEFAULT_INTERVAL_SECONDS,
+/** Runtime options for one account, expanded from a single [[accounts]] entry. */
+data class AccountOptions(
+    val label: String,
+    val account: String,
+    val password: String,
+    val intervalSeconds: Long = AppConfig.DEFAULT_INTERVAL_SECONDS,
     val location: SignLocation? = null,
     val locations: List<CourseLocation> = emptyList(),
-    val accounts: List<AccountConfig> = emptyList(),
     val once: Boolean = false,
     val autoCheckin: Boolean = true,
-    val debug: Boolean = false,
-    val help: Boolean = false,
-    val version: Boolean = false
+    val debug: Boolean = false
 ) {
-    /** Debug mode should not waste 300ms per course while hunting a check-in. */
-    val courseDelayMillis: Long get() = if (debug) DEBUG_COURSE_DELAY_MILLIS else COURSE_DELAY_MILLIS
-
     init {
-        require(intervalSeconds >= MIN_INTERVAL_SECONDS && intervalSeconds <= Long.MAX_VALUE / 1000) {
-            "检查间隔必须是大于等于 $MIN_INTERVAL_SECONDS 的整数秒，且不能超过 ${Long.MAX_VALUE / 1000}"
+        require(label.isNotBlank()) { "账户标识不能为空" }
+        require(account.isNotBlank()) { "账号不能为空" }
+        require(password.isNotEmpty()) { "密码不能为空" }
+        require(
+            intervalSeconds >= AppConfig.MIN_INTERVAL_SECONDS &&
+                intervalSeconds <= Long.MAX_VALUE / 1000
+        ) {
+            "检查间隔必须是大于等于 ${AppConfig.MIN_INTERVAL_SECONDS} 的整数秒，" +
+                "且不能超过 ${Long.MAX_VALUE / 1000}"
         }
     }
+
+    /** Debug mode should not waste 300ms per course while hunting a check-in. */
+    val courseDelayMillis: Long
+        get() = if (debug) AppConfig.DEBUG_COURSE_DELAY_MILLIS else AppConfig.COURSE_DELAY_MILLIS
 
     val latitude: Double? get() = location?.latitude
 
@@ -95,31 +103,10 @@ data class AppConfig(
 
     val hasLocation: Boolean get() = location != null
 
-    val locationText: String
-        get() = location?.text ?: "未配置"
-
-    val isMultiAccount: Boolean get() = accounts.isNotEmpty()
+    val locationText: String get() = location?.text ?: "未配置"
 
     /**
-     * Expands [[accounts]] into independent per-account configs. Account-level
-     * coordinates and locations override the global defaults.
-     */
-    fun effectiveAccounts(): List<AppConfig> {
-        if (accounts.isEmpty()) return listOf(this)
-        return accounts.mapIndexed { index, account ->
-            copy(
-                account = account.username,
-                password = account.password,
-                label = account.name?.takeIf { it.isNotBlank() } ?: "账号${index + 1}",
-                location = account.location ?: location,
-                locations = account.locations + locations,
-                accounts = emptyList()
-            )
-        }
-    }
-
-    /**
-     * Per-course coordinates take precedence over the global latitude/longitude.
+     * Per-course coordinates take precedence over the account default.
      * Matching order: course_id, then course name.
      */
     fun locationFor(course: ClazzCourse): SignLocation? {
@@ -145,7 +132,41 @@ data class AppConfig(
         locations.firstOrNull {
             it.courseName != null && normalizeName(it.courseName) == courseName
         }?.let { return it.selector }
-        return if (hasLocation) "全局默认" else null
+        return if (hasLocation) "账户默认" else null
+    }
+}
+
+/**
+ * Whole-file settings. Accounts are always a list, even for a single user,
+ * so one account and many accounts share exactly the same code path.
+ */
+data class AppConfig(
+    val accounts: List<AccountConfig> = emptyList(),
+    val intervalSeconds: Long = DEFAULT_INTERVAL_SECONDS,
+    val once: Boolean = false,
+    val autoCheckin: Boolean = true,
+    val debug: Boolean = false,
+    val help: Boolean = false,
+    val version: Boolean = false
+) {
+    init {
+        require(intervalSeconds >= MIN_INTERVAL_SECONDS && intervalSeconds <= Long.MAX_VALUE / 1000) {
+            "检查间隔必须是大于等于 $MIN_INTERVAL_SECONDS 的整数秒，且不能超过 ${Long.MAX_VALUE / 1000}"
+        }
+    }
+
+    fun effectiveAccounts(): List<AccountOptions> = accounts.mapIndexed { index, account ->
+        AccountOptions(
+            label = account.name?.takeIf { it.isNotBlank() } ?: "账号${index + 1}",
+            account = account.username,
+            password = account.password,
+            intervalSeconds = intervalSeconds,
+            location = account.location,
+            locations = account.locations,
+            once = once,
+            autoCheckin = autoCheckin,
+            debug = debug
+        )
     }
 
     companion object {
@@ -160,54 +181,37 @@ data class AppConfig(
             用法：
               java -jar autosign.jar [选项]
 
-            默认读取 JAR 同目录下的 config.toml（修改后重启生效）：
-              username = "你的账号"
-              password = "你的密码"
+            默认读取 JAR 同目录下的 config.toml（修改后重启生效）。
+            账号只有多账户写法，单个账号也写成一项 [[accounts]]：
               check_interval = 30
               debug = false
 
-            选项：
-              --account <账号>       手机号或邮箱账号
-              --interval <秒>        覆盖配置文件的轮询间隔，最小 10 秒
-              --once                 只检查一轮，不持续轮询
-              --no-auto-checkin      只查询签到状态，不自动签到
-              --debug               调试模式：记录每个班课状态和脱敏抓包
-              --location <经度,纬度>  覆盖签到定位
-              --help                 显示帮助
-              --version              显示版本
-
-            密码不会从命令行参数读取。程序会在需要时安全提示输入；
-            也可使用环境变量 YBK_ACCOUNT、YBK_PASSWORD。配置文件中的密码不会打印到日志。
-
-            可选：为普通签到（SIMPLE / POINT_9）设置自定义定位。
-            一个值写「经度,纬度」，坐标使用 GCJ-02（高德/腾讯地图）：
-              location = "121.482388,29.885685"
-
-            可选：为不同班课分别设置普通签到定位。
-            每个 [[locations]] 用 course_id 或 course（课程名）指定一个班课，
-            匹配优先级为 course_id、course：
-              [[locations]]
-              course = "算法设计与分析"
-              location = "121.482388,29.885685"
-
-            可选：多账户。与单账户 username/password 二选一，不能同时配置。
-            每个 [[accounts]] 必须有 username 和 password；name 仅用于控制台
-            和日志标识，默认“账号1”“账号2”。各账户可单独设置 location，
-            以及 [[accounts.locations]] 班课定位：
               [[accounts]]
               name = "主账号"
-              username = "账号1"
-              password = "密码1"
-
-              [[accounts]]
-              name = "小号"
-              username = "账号2"
-              password = "密码2"
-              location = "121.473701,31.230416"
+              username = "你的账号"
+              password = "你的密码"
+              location = "121.482388,29.885685"
 
               [[accounts.locations]]
               course = "算法设计与分析"
-              location = "121.000000,31.000000"
+              location = "121.482388,29.885685"
+
+            选项：
+              --interval <秒>         覆盖配置文件的轮询间隔，最小 10 秒
+              --location <经度,纬度>  覆盖所有账户的签到定位
+              --once                  只检查一轮，不持续轮询
+              --no-auto-checkin       只查询签到状态，不自动签到
+              --debug                 调试模式：记录每个班课状态和脱敏抓包
+              --help                  显示帮助
+              --version               显示版本
+
+            说明：
+              每个 [[accounts]] 必须同时有 username 和 password。
+              name 只用于控制台和日志标识，可省略，默认「账号1」「账号2」。
+              location 使用 GCJ-02（高德/腾讯地图），顺序为「经度,纬度」；
+              [[accounts.locations]] 按 course_id 或课程名覆盖账户默认定位。
+              所有账户并发轮询，单个账户登录失败不影响其他账户。
+              密码只从 config.toml 读取，不支持命令行或环境变量传入。
         """.trimIndent()
 
         fun load(args: Array<String>, configFile: File? = null): AppConfig {
@@ -216,19 +220,13 @@ data class AppConfig(
         }
 
         fun parse(args: Array<String>, defaults: AppConfig = AppConfig()): AppConfig {
-            var account = defaults.account
-            val password = defaults.password
-            val label = defaults.label
             var interval = defaults.intervalSeconds
-            var location = defaults.location
-            val locations = defaults.locations
-            val accounts = defaults.accounts
+            var accounts = defaults.accounts
             var once = defaults.once
             var autoCheckin = defaults.autoCheckin
             var debug = defaults.debug
             var help = false
             var version = false
-            var accountOverridden = false
             var locationOverridden = false
             var index = 0
 
@@ -242,13 +240,8 @@ data class AppConfig(
 
             while (index < args.size) {
                 when (val option = args[index]) {
-                    "--account" -> {
-                        account = valueFor(option).trim().takeIf { it.isNotEmpty() }
-                            ?: throw IllegalArgumentException("--account 不能为空")
-                        accountOverridden = true
-                    }
-                    "--password" -> throw IllegalArgumentException(
-                        "不支持在命令行中传递密码，请使用 config.toml、安全提示输入或 YBK_PASSWORD"
+                    "--account", "--password" -> throw IllegalArgumentException(
+                        "$option 已移除：账号和密码只从 config.toml 的 [[accounts]] 读取"
                     )
                     "--interval" -> {
                         val raw = valueFor(option)
@@ -259,7 +252,8 @@ data class AppConfig(
                         }
                     }
                     "--location", "--latlng" -> {
-                        location = SignLocation.parse(valueFor(option), option)
+                        val location = SignLocation.parse(valueFor(option), option)
+                        accounts = accounts.map { it.copy(location = location) }
                         locationOverridden = true
                     }
                     "--lat", "--latitude", "--lng", "--lon", "--longitude" ->
@@ -276,23 +270,15 @@ data class AppConfig(
                 index += 1
             }
 
-            require(!(accountOverridden && accounts.isNotEmpty())) {
-                "已配置 [[accounts]] 时不能再用 --account 指定单个账号"
+            if (locationOverridden) {
+                require(accounts.isNotEmpty()) {
+                    "--location 需要在 config.toml 中至少配置一个 [[accounts]]"
+                }
             }
 
             return AppConfig(
-                account = account,
-                password = password,
-                label = label,
+                accounts = accounts,
                 intervalSeconds = interval,
-                location = location,
-                locations = locations,
-                // An explicit --location wins over every account's own value.
-                accounts = if (locationOverridden) {
-                    accounts.map { it.copy(location = location) }
-                } else {
-                    accounts
-                },
                 once = once,
                 autoCheckin = autoCheckin,
                 debug = debug,
@@ -310,31 +296,20 @@ data class AppConfig(
                 "${file.name} 格式错误，位置：${parsed.errors().first().position()}"
             }
             val allowedKeys = setOf(
-                "username", "account", "password", "passwd",
-                "check_interval", "interval", "interval_seconds", "debug",
-                "location", "locations", "accounts"
+                "check_interval", "interval", "interval_seconds", "debug", "accounts"
             )
             val unknownTopLevel = parsed.keySet().filter { it !in allowedKeys }
             require(unknownTopLevel.isEmpty()) {
-                val legacy = unknownTopLevel.filter { it in LEGACY_COORDINATE_KEYS }
-                if (legacy.isNotEmpty()) {
-                    "${file.name} 的 ${legacy.joinToString()} 已合并为 location，" +
-                        "请写成 location = \"经度,纬度\"，例如 location = \"121.482388,29.885685\""
-                } else {
-                    "${file.name} 含有未知配置项：${unknownTopLevel.joinToString()}，请参照 config.example.toml"
-                }
+                val hint = legacyHint(unknownTopLevel)
+                if (hint != null) "${file.name} $hint"
+                else "${file.name} 含有未知配置项：${unknownTopLevel.joinToString()}，" +
+                    "请参照 config.example.toml"
             }
 
             fun value(vararg keys: String): Any? {
                 val presentKeys = keys.filter { parsed.contains(it) }
                 require(presentKeys.size <= 1) { "${file.name} 的同一配置项不能重复设置" }
                 return presentKeys.singleOrNull()?.let { parsed.get(it) }
-            }
-
-            fun string(vararg keys: String): String? {
-                val value = value(*keys) ?: return null
-                require(value is String) { "${file.name} 的 ${keys.first()} 必须是带引号的字符串" }
-                return value.takeIf { it.isNotEmpty() }
             }
 
             val intervalValue = value("check_interval", "interval", "interval_seconds")
@@ -357,26 +332,31 @@ data class AppConfig(
                 else -> throw IllegalArgumentException("${file.name} 的 debug 必须是 true 或 false")
             }
 
-            val locations = parseLocations(parsed.getArray("locations"), file)
-            val accounts = parseAccounts(parsed.getArray("accounts"), file)
-            val singleAccount = string("username", "account")?.trim()?.takeIf { it.isNotEmpty() }
-            val singlePassword = string("password", "passwd")
-            require(accounts.isEmpty() || singleAccount == null) {
-                "${file.name} 不能同时配置 username/password 和 [[accounts]]，请只保留一种"
-            }
-            require(accounts.isEmpty() || singlePassword == null) {
-                "${file.name} 不能同时配置 username/password 和 [[accounts]]，请只保留一种"
-            }
-
             return AppConfig(
-                account = singleAccount,
-                password = singlePassword,
+                accounts = parseAccounts(parsed.getArray("accounts"), file),
                 intervalSeconds = interval,
-                location = parseLocation(value("location"), file, "location"),
-                locations = locations,
-                accounts = accounts,
                 debug = debug
             )
+        }
+
+        /** Explains removed single-account keys instead of only saying "unknown key". */
+        private fun legacyHint(keys: List<String>): String? {
+            val credentialKeys = keys.filter { it in LEGACY_ACCOUNT_KEYS }
+            if (credentialKeys.isNotEmpty()) {
+                return "已移除单账户配置 ${credentialKeys.joinToString()}，" +
+                    "请改用 [[accounts]]，单个账号也写成一项"
+            }
+            val locationKeys = keys.filter { it in LEGACY_LOCATION_KEYS }
+            if (locationKeys.isNotEmpty()) {
+                return "的 ${locationKeys.joinToString()} 已移入账户，" +
+                    "请写在 [[accounts]] 的 location 或 [[accounts.locations]] 中"
+            }
+            val coordinateKeys = keys.filter { it in LEGACY_COORDINATE_KEYS }
+            if (coordinateKeys.isNotEmpty()) {
+                return "的 ${coordinateKeys.joinToString()} 已合并为 location，" +
+                    "请写成 location = \"经度,纬度\"，例如 location = \"121.482388,29.885685\""
+            }
+            return null
         }
 
         private fun parseAccounts(array: TomlArray?, file: File): List<AccountConfig> {
@@ -392,10 +372,12 @@ data class AppConfig(
                     "location", "locations"
                 )
                 require(table.keySet().all { it in allowed }) {
-                    val legacy = table.keySet().filter { it in LEGACY_COORDINATE_KEYS }
+                    val legacy = table.keySet().filter {
+                        it in LEGACY_COORDINATE_KEYS || it in LEGACY_LOCATION_KEYS
+                    }
                     if (legacy.isNotEmpty()) {
-                        "${file.name} 的 $where 的 ${legacy.joinToString()} 已合并为 location，" +
-                            "请写成 location = \"经度,纬度\""
+                        "${file.name} 的 $where 的 ${legacy.joinToString()} 不受支持，" +
+                            "请写成 location = \"经度,纬度\" 或 [[accounts.locations]]"
                     } else {
                         "${file.name} 的 $where 含有未知配置项"
                     }
@@ -430,17 +412,14 @@ data class AppConfig(
         private fun parseLocations(
             array: TomlArray?,
             file: File,
-            scope: String? = null
+            scope: String
         ): List<CourseLocation> {
             if (array == null) return emptyList()
             val result = mutableListOf<CourseLocation>()
             for (index in 0 until array.size()) {
+                val where = "$scope 中第 ${index + 1} 个 [[accounts.locations]]"
                 val table = array.getTable(index)
-                    ?: throw IllegalArgumentException(
-                        "${file.name} 的${scope?.let { "$it 中" } ?: ""}第 ${index + 1} 个 " +
-                            "[[locations]] 必须是表"
-                    )
-                val where = "${scope?.let { "$it 中" } ?: ""}第 ${index + 1} 个 [[locations]]"
+                    ?: throw IllegalArgumentException("${file.name} 的 $where 必须是表")
                 val allowed = setOf("course_id", "course", "location")
                 require(table.keySet().all { it in allowed }) {
                     val legacy = table.keySet().filter { it in LEGACY_COORDINATE_KEYS }
@@ -467,7 +446,7 @@ data class AppConfig(
                 }
             }.entries.firstOrNull { it.value.size > 1 }
             require(duplicate == null) {
-                "${file.name} 的 [[locations]] 重复配置了 ${duplicate?.value?.first()?.selector}"
+                "${file.name} 的 $scope 重复配置了 ${duplicate?.value?.first()?.selector}"
             }
             return result
         }
@@ -491,12 +470,9 @@ data class AppConfig(
             return SignLocation.parse(raw, "${file.name} 的 $where")
         }
 
-        private val LEGACY_COORDINATE_KEYS = setOf(
-            "latitude", "longitude", "lat", "lng"
-        )
-
-        private fun normalizeName(value: String): String =
-            value.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ROOT)
+        private val LEGACY_ACCOUNT_KEYS = setOf("username", "account", "password", "passwd")
+        private val LEGACY_LOCATION_KEYS = setOf("location", "locations")
+        private val LEGACY_COORDINATE_KEYS = setOf("latitude", "longitude", "lat", "lng")
 
         fun defaultConfigFile(): File {
             val codeSource = runCatching {
@@ -510,3 +486,6 @@ data class AppConfig(
         }
     }
 }
+
+private fun normalizeName(value: String): String =
+    value.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ROOT)

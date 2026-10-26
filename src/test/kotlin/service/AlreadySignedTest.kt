@@ -1,6 +1,6 @@
 package `fun`.eternalblue.service
 
-import `fun`.eternalblue.data.AppConfig
+import `fun`.eternalblue.data.AccountOptions
 import `fun`.eternalblue.net.ApiClient
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -32,7 +32,12 @@ class AlreadySignedTest {
 
             val baseUrl = server.url("/").toString().removeSuffix("/")
             val service = AutoSignService(
-                options = AppConfig(autoCheckin = true),
+                options = AccountOptions(
+                    label = "测试账户",
+                    account = "user-1",
+                    password = "secret-1",
+                    autoCheckin = true
+                ),
                 api = ApiClient(OkHttpClient()),
                 coreApiBaseUrl = baseUrl,
                 clockinApiUrl = "$baseUrl/cc_clockin/clockin",

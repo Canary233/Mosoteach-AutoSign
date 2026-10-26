@@ -1,6 +1,6 @@
 package `fun`.eternalblue.service
 
-import `fun`.eternalblue.data.AppConfig
+import `fun`.eternalblue.data.AccountOptions
 import `fun`.eternalblue.net.MobileProtocol
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -33,7 +33,11 @@ class LegacyLoginTest {
             )
             val baseUrl = server.url("/").toString().removeSuffix("/")
             val service = AutoSignService(
-                options = AppConfig(),
+                options = AccountOptions(
+                    label = "测试账户",
+                    account = "account",
+                    password = "password"
+                ),
                 api = `fun`.eternalblue.net.ApiClient(OkHttpClient()),
                 coreApiBaseUrl = baseUrl,
                 legacyLoginApiUrl = "$baseUrl/mssvc/index.php/passport/login"

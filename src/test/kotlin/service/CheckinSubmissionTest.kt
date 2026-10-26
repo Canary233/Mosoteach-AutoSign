@@ -1,6 +1,6 @@
 package `fun`.eternalblue.service
 
-import `fun`.eternalblue.data.AppConfig
+import `fun`.eternalblue.data.AccountOptions
 import `fun`.eternalblue.data.CheckinCurrent
 import `fun`.eternalblue.data.CheckinInfo
 import `fun`.eternalblue.data.ClazzCourse
@@ -131,7 +131,7 @@ class CheckinSubmissionTest {
 
     @Test
     fun routesBothNormalTypesToNormalCheckin() {
-        val service = AutoSignService(AppConfig())
+        val service = AutoSignService(testOptions())
 
         assertEquals("normal", service.checkinTypeForTest("SIMPLE"))
         assertEquals("normal", service.checkinTypeForTest("POINT_9"))
@@ -143,7 +143,7 @@ class CheckinSubmissionTest {
     fun sendsConfiguredLocationForPoint9() = withServer { server ->
         server.enqueue(MockResponse().setBody("""{"result_code":0}"""))
         val service = AutoSignService(
-            options = AppConfig(
+            options = testOptions(
                 autoCheckin = true,
                 location = SignLocation(longitude = 120.15507, latitude = 30.274085)
             ),
@@ -181,7 +181,7 @@ class CheckinSubmissionTest {
     fun usesPerCourseLocationInsteadOfGlobal() = withServer { server ->
         server.enqueue(MockResponse().setBody("""{"result_code":0}"""))
         val service = AutoSignService(
-            options = AppConfig(
+            options = testOptions(
                 autoCheckin = true,
                 location = SignLocation(longitude = 120.0, latitude = 30.0),
                 locations = listOf(
@@ -223,7 +223,7 @@ class CheckinSubmissionTest {
     private fun newService(server: MockWebServer): AutoSignService {
         val baseUrl = server.url("/").toString().removeSuffix("/")
         return AutoSignService(
-            options = AppConfig(autoCheckin = true),
+            options = testOptions(autoCheckin = true),
             api = `fun`.eternalblue.net.ApiClient(OkHttpClient()),
             coreApiBaseUrl = baseUrl,
             clockinApiUrl = "$baseUrl/cc_clockin/clockin",
@@ -237,4 +237,17 @@ class CheckinSubmissionTest {
             block(server)
         }
     }
+
+    private fun testOptions(
+        autoCheckin: Boolean = true,
+        location: SignLocation? = null,
+        locations: List<CourseLocation> = emptyList()
+    ) = AccountOptions(
+        label = "测试账户",
+        account = "user-1",
+        password = "secret-1",
+        autoCheckin = autoCheckin,
+        location = location,
+        locations = locations
+    )
 }
