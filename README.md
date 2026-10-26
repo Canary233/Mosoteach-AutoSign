@@ -1,5 +1,7 @@
 # YunBanKe-AutoSign
 
+[![Build](https://github.com/Canary233/Mosoteach-AutoSign/actions/workflows/build.yml/badge.svg)](https://github.com/Canary233/Mosoteach-AutoSign/actions/workflows/build.yml)
+
 云班课签到状态查询与自动签到工具，使用云班课的 Web 登录和移动端签名接口。
 
 ## 已实现的功能
@@ -152,6 +154,16 @@ location = "120.160000,30.280000"
 ```text
 build/libs/autosign.jar
 ```
+
+仓库已配置 GitHub Actions（`.github/workflows/build.yml`）：
+
+- 推送到 `master` / `main`、提交 Pull Request 或手动触发时，自动执行
+  `clean test build`，并把 `autosign.jar` 和 `config.example.toml` 作为
+  `autosign-jar` artifact 上传。
+- 推送 `v*` 标签（例如 `v2.0.0`）时，在构建通过后自动创建 Release 并附加
+  `autosign.jar`。
+
+也可以直接下载 Actions 运行页面里的 artifact，无需本地安装 JDK/Gradle。
 
 ## 说明
 
