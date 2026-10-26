@@ -19,5 +19,5 @@ data class Term(
 
 @Serializable
 data class Course(
-    val name:String
+    val name: String = "未命名课程"
 )
