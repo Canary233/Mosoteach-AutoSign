@@ -7,15 +7,26 @@ import java.time.LocalTime
 
 object Log
 {
-    private val logFile = File("logs/log.log")
-    init
+    // Multi-account runs write from several threads; Windows rejects concurrent append.
+    private val lock = Any()
+
+    @Volatile
+    private var logFile = File("logs/log.log")
+
+    @Volatile
+    var debugEnabled = false
+        private set
+
+    fun init(baseDir: File, debug: Boolean)
     {
-        if(logFile.exists())
-        {
-            logFile.delete()
-        }
+        debugEnabled = debug
+        logFile = File(File(baseDir, "logs"), "log.log")
         try
         {
+            if(logFile.exists())
+            {
+                logFile.delete()
+            }
             //如果log.log的父文件(logs)不存在，创建logs和log.log
             if (!logFile.parentFile.exists())
             {
@@ -38,7 +49,9 @@ object Log
         val logMessage = "[${level} - $time] : $message \n"
         try
         {
-            FileWriter(logFile,true).use { it -> it.write(logMessage) }
+            synchronized(lock) {
+                FileWriter(logFile,true).use { it -> it.write(logMessage) }
+            }
         }catch (e:IOException)
         {
             println(e.message)
@@ -52,7 +65,7 @@ object Log
 
     fun debug(message: String)
     {
-        log("DEBUG",message)
+        if (debugEnabled) log("DEBUG",message)
     }
 
     fun error(message: String)
