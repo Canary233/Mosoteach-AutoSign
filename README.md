@@ -124,6 +124,16 @@ java -jar autosign.jar --location 121.482388,29.885685
 
 启动时会显示每个账户生效的定位。`CLOCKIN` 限时签到不使用该坐标。
 
+### 手势签到
+
+`POINT_9` 与 `SIMPLE` 走同一个提交接口，请求体只有
+`checkin_id`、`report_pos_flag`、`lat`、`lng` 四个字段，因此同样会提交上面的定位。
+
+反编译云班课 5.4.x 客户端可见：服务端下发的 `checkin.points` 只在客户端
+`LocusPassWordView` 里做本地比对，`https://checkin.mosoteach.cn:19528/checkin`
+不接收图案参数，所以不需要（也无法）还原手势。调试模式下会打印收到的图案，
+便于核对服务端行为。
+
 ### 不同课程使用不同定位
 
 用 `[[accounts.locations]]` 为账户内的指定班课单独设置坐标。每块只能选一种匹配方式：

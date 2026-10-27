@@ -484,11 +484,22 @@ class AutoSignService(
 
         when (type) {
             "CLOCKIN" -> submitClockin(mobileSession, course)
-            "SIMPLE", "POINT_9" -> submitNormalCheckin(
-                mobileSession,
-                course,
-                current.checkin?.id
-            )
+            "SIMPLE", "POINT_9" -> {
+                if (type == "POINT_9" && options.debug) {
+                    // The gesture pattern is only compared inside the Android client
+                    // (LocusPassWordView); the submit endpoint never receives it.
+                    debugLine(
+                        "${course.displayName}：手势签到图案 " +
+                            (current.checkin?.points ?: "未下发") +
+                            "，按普通签到提交（服务端不校验图案）"
+                    )
+                }
+                submitNormalCheckin(
+                    mobileSession,
+                    course,
+                    current.checkin?.id
+                )
+            }
             else -> say("${course.displayName}：暂不支持签到类型 $type，未自动提交。")
         }
     }

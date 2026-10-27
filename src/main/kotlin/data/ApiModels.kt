@@ -145,7 +145,13 @@ data class CheckinInfo(
     val openTime: JsonElement? = null,
     val deadlineTime: JsonElement? = null,
     val checkinFlag: String? = null,
-    val checkinTime: JsonElement? = null
+    val checkinTime: JsonElement? = null,
+    /**
+     * Gesture check-in (POINT_9) pattern pushed by the server, e.g. "1-4-7-8".
+     * The Android client only compares it locally in LocusPassWordView; the
+     * submit endpoint never receives it, so it is kept for logging only.
+     */
+    val points: String? = null
 ) {
     val normalizedType: String? get() = type?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
 
@@ -171,7 +177,8 @@ object CheckinInfoSerializer : kotlinx.serialization.KSerializer<CheckinInfo> {
             openTime = obj["openTime"],
             deadlineTime = obj["deadlineTime"],
             checkinFlag = obj.text("checkinFlag"),
-            checkinTime = obj["checkinTime"]
+            checkinTime = obj["checkinTime"],
+            points = obj.text("points")
         )
     }
 
@@ -185,6 +192,7 @@ object CheckinInfoSerializer : kotlinx.serialization.KSerializer<CheckinInfo> {
             value.deadlineTime?.let { put("deadlineTime", it) }
             value.checkinFlag?.let { put("checkinFlag", it) }
             value.checkinTime?.let { put("checkinTime", it) }
+            value.points?.let { put("points", it) }
         }
         output.encodeJsonElement(obj)
     }
@@ -239,6 +247,7 @@ private fun CheckinInfoSerializer.serializeToElement(value: CheckinInfo): JsonEl
         value.deadlineTime?.let { put("deadlineTime", it) }
         value.checkinFlag?.let { put("checkinFlag", it) }
         value.checkinTime?.let { put("checkinTime", it) }
+        value.points?.let { put("points", it) }
     }
 
 private fun JsonElement.asJsonObjectOrNull(): JsonObject? = this as? JsonObject

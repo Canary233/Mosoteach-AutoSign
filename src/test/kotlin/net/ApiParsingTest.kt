@@ -197,4 +197,21 @@ class ApiParsingTest {
         assertEquals(0, ok.code)
         assertEquals(2409, repeat.code)
     }
+
+    @Test
+    fun parsesGesturePointsFromPoint9Checkin() {
+        val open = api.json.decodeFromString<CheckinCurrent>(
+            """
+            {"status":true,"checkin":{"id":"c9","type":"POINT_9",
+             "points":"1-4-7-8","checkinFlag":"N"}}
+            """.trimIndent()
+        )
+        val noPoints = api.json.decodeFromString<CheckinCurrent>(
+            """{"status":true,"checkin":{"id":"c10","type":"POINT_9","points":null}}"""
+        )
+
+        assertEquals("1-4-7-8", open.checkin?.points)
+        assertEquals("POINT_9", open.checkin?.normalizedType)
+        assertEquals(null, noPoints.checkin?.points)
+    }
 }
