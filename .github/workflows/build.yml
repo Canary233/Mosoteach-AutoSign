@@ -44,13 +44,20 @@ jobs:
           test -f build/libs/autosign.jar
           java -jar build/libs/autosign.jar --version
 
+      # upload-artifact 以所有路径的最近公共祖先作为 artifact 根目录，
+      # 直接上传 build/libs/autosign.jar + config.example.toml 会保留 build/libs/ 层级，
+      # 导致 release job 里找不到 autosign.jar。先统一摊平到 dist/。
+      - name: Stage release files
+        run: |
+          mkdir -p dist
+          cp build/libs/autosign.jar dist/
+          cp config.example.toml dist/
+
       - name: Upload jar
         uses: actions/upload-artifact@v4
         with:
           name: autosign-jar
-          path: |
-            build/libs/autosign.jar
-            config.example.toml
+          path: dist/
           if-no-files-found: error
 
       - name: Upload test report
@@ -69,6 +76,7 @@ jobs:
 
     permissions:
       contents: write
+      actions: read
 
     steps:
       - name: Download jar
@@ -76,10 +84,14 @@ jobs:
         with:
           name: autosign-jar
 
+      - name: List release files
+        run: ls -l
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             autosign.jar
             config.example.toml
+          fail_on_unmatched_files: true
           generate_release_notes: true
