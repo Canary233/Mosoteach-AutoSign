@@ -138,10 +138,10 @@ course_id = "F9CF052C-AD94-11F1-BAE9-A088C2A30E68"
 location = "120.160000,30.280000"
 ```
 
-匹配优先级：`course_id` > `course`（课程名）> 账户 `location`。
+匹配优先级：`course_id` > `course` > 账户 `location`。
 课程名会忽略首尾空格与大小写，必须完整匹配。
 同一选择器不能重复配置；未匹配到任何规则的班课使用账户定位，未配置时提交空经纬度。
-课程定位只在所属账户内生效，不会被其他账户继承。
+课程定位只在所属账户内生效。
 
 ## 构建
 
@@ -154,16 +154,6 @@ location = "120.160000,30.280000"
 ```text
 build/libs/autosign.jar
 ```
-
-仓库已配置 GitHub Actions（`.github/workflows/build.yml`）：
-
-- 推送到 `master` / `main`、提交 Pull Request 或手动触发时，自动执行
-  `clean test build`，并把 `autosign.jar` 和 `config.example.toml` 作为
-  `autosign-jar` artifact 上传。
-- 推送 `v*` 标签（例如 `v2.0.0`）时，在构建通过后自动创建 Release 并附加
-  `autosign.jar`。
-
-也可以直接下载 Actions 运行页面里的 artifact，无需本地安装 JDK/Gradle。
 
 ## 说明
 
