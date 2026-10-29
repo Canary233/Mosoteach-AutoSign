@@ -12,8 +12,11 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CheckinSubmissionTest {
@@ -137,6 +140,84 @@ class CheckinSubmissionTest {
         assertEquals("normal", service.checkinTypeForTest("POINT_9"))
         assertEquals("clockin", service.checkinTypeForTest("CLOCKIN"))
         assertEquals("unsupported", service.checkinTypeForTest("OTHER"))
+    }
+
+    @Test
+    fun labelsNormalTypesByCheckinType() {
+        val service = AutoSignService(testOptions())
+
+        assertEquals("普通签到", service.checkinLabelFor("SIMPLE"))
+        assertEquals("手势签到", service.checkinLabelFor("POINT_9"))
+        assertEquals("手势签到", service.checkinLabelFor(" point_9 "))
+        assertEquals("普通签到", service.checkinLabelFor(null))
+    }
+
+    @Test
+    fun reportsPoint9SubmissionAsGestureCheckin() = withServer { server ->
+        server.enqueue(MockResponse().setBody("""{"result_code":0}"""))
+        val service = newService(server)
+        val session = service.createTestSession(
+            userId = "user-1",
+            accessId = "access-1",
+            accessSecret = "secret-1",
+            lastSecUpdateTsS = "1700000004"
+        )
+
+        val output = ByteArrayOutputStream()
+        val original = System.out
+        System.setOut(PrintStream(output, true, "UTF-8"))
+        try {
+            runBlocking {
+                service.submitCheckin(
+                    session,
+                    course,
+                    CheckinCurrent(
+                        status = true,
+                        checkin = CheckinInfo(id = "checkin-9", type = "POINT_9")
+                    )
+                )
+            }
+        } finally {
+            System.setOut(original)
+        }
+
+        val text = output.toString("UTF-8")
+        assertTrue(text.contains("手势签到提交成功"), text)
+        assertFalse(text.contains("普通签到"), text)
+    }
+
+    @Test
+    fun reportsSimpleSubmissionAsNormalCheckin() = withServer { server ->
+        server.enqueue(MockResponse().setBody("""{"result_code":0}"""))
+        val service = newService(server)
+        val session = service.createTestSession(
+            userId = "user-1",
+            accessId = "access-1",
+            accessSecret = "secret-1",
+            lastSecUpdateTsS = "1700000005"
+        )
+
+        val output = ByteArrayOutputStream()
+        val original = System.out
+        System.setOut(PrintStream(output, true, "UTF-8"))
+        try {
+            runBlocking {
+                service.submitCheckin(
+                    session,
+                    course,
+                    CheckinCurrent(
+                        status = true,
+                        checkin = CheckinInfo(id = "checkin-1", type = "SIMPLE")
+                    )
+                )
+            }
+        } finally {
+            System.setOut(original)
+        }
+
+        val text = output.toString("UTF-8")
+        assertTrue(text.contains("普通签到提交成功"), text)
+        assertFalse(text.contains("手势签到"), text)
     }
 
     @Test

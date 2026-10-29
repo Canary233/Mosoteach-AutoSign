@@ -249,6 +249,10 @@ class AutoSignService(
         else -> "unsupported"
     }
 
+    /** Console/log label for the normal check-in endpoint, which serves both SIMPLE and POINT_9. */
+    internal fun checkinLabelFor(type: String?): String =
+        if (type?.trim()?.uppercase() == "POINT_9") "手势签到" else "普通签到"
+
     private fun loginMobile(account: String, password: String): Session.Mobile? {
         val date = MobileProtocol.gmtDate()
         val payload = MobileProtocol.loginJson(account, password)
@@ -485,19 +489,21 @@ class AutoSignService(
         when (type) {
             "CLOCKIN" -> submitClockin(mobileSession, course)
             "SIMPLE", "POINT_9" -> {
+                val label = checkinLabelFor(type)
                 if (type == "POINT_9" && options.debug) {
                     // The gesture pattern is only compared inside the Android client
                     // (LocusPassWordView); the submit endpoint never receives it.
                     debugLine(
                         "${course.displayName}：手势签到图案 " +
                             (current.checkin?.points ?: "未下发") +
-                            "，按普通签到提交（服务端不校验图案）"
+                            "，提交体与一键签到相同（服务端不校验图案）"
                     )
                 }
                 submitNormalCheckin(
                     mobileSession,
                     course,
-                    current.checkin?.id
+                    current.checkin?.id,
+                    label
                 )
             }
             else -> say("${course.displayName}：暂不支持签到类型 $type，未自动提交。")
@@ -534,12 +540,13 @@ class AutoSignService(
     private fun submitNormalCheckin(
         session: Session.Mobile,
         course: ClazzCourse,
-        checkinId: String?
+        checkinId: String?,
+        label: String
     ) {
         val normalizedCheckinId = checkinId?.trim()?.takeIf { it.isNotEmpty() }
         if (normalizedCheckinId == null) {
             say("${course.displayName}：签到响应缺少签到 ID，未自动提交。")
-            logError("普通签到未提交：course=${course.id}, 缺少 checkin.id")
+            logError("${label}未提交：course=${course.id}, 缺少 checkin.id")
             return
         }
         val securityTimestamp = session.lastSecUpdateTsS
@@ -547,7 +554,7 @@ class AutoSignService(
             ?.takeIf { it.isNotEmpty() }
         if (securityTimestamp == null) {
             say("${course.displayName}：登录响应缺少移动端安全时间戳，未自动提交。")
-            logError("普通签到未提交：course=${course.id}, 缺少 lastSecUpdateTsS")
+            logError("${label}未提交：course=${course.id}, 缺少 lastSecUpdateTsS")
             return
         }
 
@@ -571,7 +578,7 @@ class AutoSignService(
         if (options.debug) {
             val location = options.locationFor(course)
             debugLine(
-                "${course.displayName}：普通签到定位 ${
+                "${course.displayName}：${label}定位 ${
                     location?.text ?: "未配置（提交空经纬度）"
                 }（来源：${options.locationSourceFor(course) ?: "无"}）"
             )
@@ -582,7 +589,7 @@ class AutoSignService(
             .applyMssvcHeaders(session, date, signature, securityTimestamp)
             .build()
 
-        submitAndReport(request, course, "普通签到")
+        submitAndReport(request, course, label)
     }
 
     internal fun submitAndReport(
